@@ -1,0 +1,67 @@
+.tk-token-group {
+  --tk-est-text: #5a3d07;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.tk-token-group.stacked {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.tk-token-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tk-token-value[title] {
+  cursor: help;
+}
+
+.tk-token-value.strong .tk-token-number {
+  font-weight: 700;
+}
+
+.tk-token-label,
+.tk-token-unit {
+  color: var(--text-muted);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.tk-token-number {
+  color: inherit;
+}
+
+.tk-token-value.estimated .tk-token-number {
+  color: var(--tk-est-text);
+}
+
+.tk-token-sep {
+  color: var(--text-muted);
+}
+
+.tk-cost-value {
+  color: inherit;
+}
+
+:root[data-theme='dark'] .tk-token-group {
+  --tk-est-text: #ecd39a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .tk-token-group {
+    --tk-est-text: #ecd39a;
+  }
+}
