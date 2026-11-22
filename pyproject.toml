@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tracekit"
+version = "0.2.0"
+description = "Developer-focused LLM observability and tracing platform"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "aiosqlite>=0.19.0",
+]
+
+[project.optional-dependencies]
+langchain = [
+  "langchain-core>=0.1.0",
+]
+postgres = [
+  "asyncpg>=0.29.0",
+]
+clickhouse = [
+  "clickhouse-connect>=0.7.0",
+]
+grpc = [
+  "grpcio>=1.60.0",
+  "opentelemetry-proto>=1.23.0",
+]
+distributed = [
+  "asyncpg>=0.29.0",
+  "clickhouse-connect>=0.7.0",
+  "grpcio>=1.60.0",
+  "opentelemetry-proto>=1.23.0",
+]
+streaming = [
+  "websockets>=12.0",
+]
+webhook = [
+  "httpx>=0.24.0",
+]
+dashboard = []
+dev = [
+  "pytest>=7.0",
+  "pytest-asyncio>=0.21",
+  "pytest-cov>=4.0",
+  "ruff>=0.6",
+  "mypy>=1.10",
+  "build>=1.0",
+  "twine>=5.0",
+  "websockets>=12.0",
+  "httpx>=0.24.0",
+]
+
+[project.scripts]
+tracekit = "tracekit.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "sdk"}
+
+[tool.setuptools.packages.find]
+where = ["sdk"]
+include = ["tracekit*", "backend*"]
+
+[tool.setuptools.package-data]
+"tracekit.dashboard" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["sdk"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "F401", "F811"]
+"sdk/backend/apps/db/sqllite.py" = ["E402"]
+
+[tool.coverage.run]
+source = ["tracekit", "backend"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = false
+no_implicit_optional = true
+exclude = ["^venv/", "^build/", "^dist/"]
