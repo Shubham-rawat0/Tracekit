@@ -363,3 +363,172 @@ def test_sdk_derives_top_level_trace_fields(tmp_path):
     assert doc["response"] == "answer"
     assert doc["token_count"] == 5
     assert doc["model_name"] == "model-x"
+
+
+def test_trace_query_uses_ls_model_name_fallback(_server):
+    start = datetime(2026, 2, 3, 10, 0, tzinfo=timezone.utc)
+    _seed(
+        _server,
+        [
+            {
+                "trace_id": "ls-model",
+                "name": "ls-model",
+                "status": "ok",
+                "model_name": "",
+                "start_time": start,
+                "end_time": start + timedelta(milliseconds=100),
+            }
+        ],
+        [
+            {
+                "span_id": "span-ls-model",
+                "trace_id": "ls-model",
+                "span_type": "llm",
+                "name": "llm-call",
+                "status": "ok",
+                "start_time": start,
+                "end_time": start + timedelta(milliseconds=50),
+                "attributes": {"ls_model_name": "gemini-2.0-flash"},
+            }
+        ],
+    )
+
+    query = _json(
+        _server,
+        "/api/traces/query?" + urllib.parse.urlencode({"trace_id": "ls-model"}),
+        token=_server.token,
+    )
+    assert query["items"][0]["model_name"] == "gemini-2.0-flash"
+
+    analytics = _json(
+        _server,
+        "/api/analytics?" + urllib.parse.urlencode({"trace_id": "ls-model"}),
+        token=_server.token,
+    )
+    assert analytics["models"][0]["model"] == "gemini-2.0-flash"
+
+
+def test_error_events_mark_trace_status_as_error(_server):
+    start = datetime(2026, 2, 3, 10, 0, tzinfo=timezone.utc)
+    _seed(
+        _server,
+        [
+            {
+                "trace_id": "event-error",
+                "name": "event-error",
+                "status": "ok",
+                "start_time": start,
+                "end_time": start + timedelta(milliseconds=100),
+            }
+        ],
+        [
+            {
+                "span_id": "span-event-error",
+                "trace_id": "event-error",
+                "span_type": "tool",
+                "name": "tool-call",
+                "status": "error",
+                "start_time": start,
+                "end_time": start + timedelta(milliseconds=50),
+                "events": [
+                    {
+                        "name": "exception",
+                        "attributes": {
+                            "exception.type": "ValueError",
+                            "exception.message": "boom",
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+
+    query = _json(
+        _server,
+        "/api/traces/query?" + urllib.parse.urlencode({"trace_id": "event-error"}),
+        token=_server.token,
+    )
+    assert query["items"][0]["status"] == "error"
+
+    analytics = _json(
+        _server,
+        "/api/analytics?" + urllib.parse.urlencode({"trace_id": "event-error"}),
+        token=_server.token,
+    )
+    assert analytics["summary"]["failed_traces"] == 1
+
+
+def test_span_error_status_marks_trace_status_as_error(_server):
+    start = datetime(2026, 2, 3, 10, 0, tzinfo=timezone.utc)
+    _seed(
+        _server,
+        [
+            {
+                "trace_id": "span-status-error",
+                "name": "span-status-error",
+                "status": "ok",
+                "start_time": start,
+                "end_time": start + timedelta(milliseconds=100),
+            }
+        ],
+        [
+            {
+                "span_id": "span-status-error-child",
+                "trace_id": "span-status-error",
+                "span_type": "tool",
+                "name": "tool-call",
+                "status": "error",
+                "start_time": start,
+                "end_time": start + timedelta(milliseconds=50),
+            }
+        ],
+    )
+
+    query = _json(
+        _server,
+        "/api/traces/query?" + urllib.parse.urlencode({"trace_id": "span-status-error"}),
+        token=_server.token,
+    )
+    assert query["items"][0]["status"] == "error"
+
+    detail = _json(
+        _server,
+        "/api/traces/span-status-error",
+        token=_server.token,
+    )
+    assert detail["status"] == "error"
+
+
+def test_span_error_attribute_marks_trace_status_as_error(_server):
+    start = datetime(2026, 2, 3, 10, 0, tzinfo=timezone.utc)
+    _seed(
+        _server,
+        [
+            {
+                "trace_id": "span-attribute-error",
+                "name": "span-attribute-error",
+                "status": "ok",
+                "start_time": start,
+                "end_time": start + timedelta(milliseconds=100),
+            }
+        ],
+        [
+            {
+                "span_id": "span-attribute-error-child",
+                "trace_id": "span-attribute-error",
+                "span_type": "tool",
+                "name": "tool-call",
+                "status": "ok",
+                "start_time": start,
+                "end_time": start + timedelta(milliseconds=50),
+                "attributes": {"error.type": "ValueError", "error.message": "boom"},
+            }
+        ],
+    )
+
+    query = _json(
+        _server,
+        "/api/traces/query?" + urllib.parse.urlencode({"trace_id": "span-attribute-error"}),
+        token=_server.token,
+    )
+    assert query["items"][0]["status"] == "error"

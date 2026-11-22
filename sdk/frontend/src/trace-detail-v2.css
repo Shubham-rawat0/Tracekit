@@ -1,16 +1,16 @@
 .td2-page {
-  --td2-primary: #14532d;
+  --td2-primary: var(--chart-primary);
   --td2-primary-ink: #ffffff;
-  --td2-tint: #e6efe8;
-  --td2-llm: #b45309;
+  --td2-tint: var(--tk-tint);
+  --td2-llm: var(--chart-secondary);
   --td2-llm-text: #2b1603;
-  --td2-tool: #14532d;
-  --td2-other: #5b6b7a;
+  --td2-tool: var(--chart-primary);
+  --td2-other: var(--chart-tertiary);
   --td2-warn-bg: #fdf6e9;
   --td2-warn-border: #ecd9b0;
   --td2-warn-text: #5a3d07;
-  --td2-error-bg: #fbeaea;
-  --td2-error-text: #9b1c1c;
+  --td2-error-bg: var(--tk-error-tint);
+  --td2-error-text: var(--chart-error);
   --td2-code-bg: #fbf9f4;
   --td2-radius: 12px;
   display: flex;
@@ -25,35 +25,35 @@
 }
 
 :root[data-theme='dark'] .td2-page {
-  --td2-primary: #7bd0a0;
+  --td2-primary: var(--chart-primary);
   --td2-primary-ink: #0d1012;
-  --td2-tint: #1c3625;
-  --td2-llm: #e0a054;
+  --td2-tint: var(--tk-tint);
+  --td2-llm: var(--chart-secondary);
   --td2-llm-text: #2b1603;
-  --td2-tool: #71bd88;
-  --td2-other: #8fa3b3;
+  --td2-tool: var(--chart-primary);
+  --td2-other: var(--chart-tertiary);
   --td2-warn-bg: #2d2617;
   --td2-warn-border: #6b542b;
   --td2-warn-text: #ecd39a;
-  --td2-error-bg: #3a1d1d;
-  --td2-error-text: #f0b4b4;
+  --td2-error-bg: var(--tk-error-tint);
+  --td2-error-text: var(--chart-error);
   --td2-code-bg: #101416;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .td2-page {
-    --td2-primary: #7bd0a0;
+    --td2-primary: var(--chart-primary);
     --td2-primary-ink: #0d1012;
-    --td2-tint: #1c3625;
-    --td2-llm: #e0a054;
+    --td2-tint: var(--tk-tint);
+    --td2-llm: var(--chart-secondary);
     --td2-llm-text: #2b1603;
-    --td2-tool: #71bd88;
-    --td2-other: #8fa3b3;
+    --td2-tool: var(--chart-primary);
+    --td2-other: var(--chart-tertiary);
     --td2-warn-bg: #2d2617;
     --td2-warn-border: #6b542b;
     --td2-warn-text: #ecd39a;
-    --td2-error-bg: #3a1d1d;
-    --td2-error-text: #f0b4b4;
+    --td2-error-bg: var(--tk-error-tint);
+    --td2-error-text: var(--chart-error);
     --td2-code-bg: #101416;
   }
 }

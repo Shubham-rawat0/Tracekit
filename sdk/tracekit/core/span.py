@@ -113,6 +113,7 @@ class Span:
         elif status is not None:
             self.status = status
         elif self.status == "running":
+            # Default: set to "ok" unless an error was recorded via record_exception()
             self.status = "ok"
         return self
 

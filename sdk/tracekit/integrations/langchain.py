@@ -179,7 +179,7 @@ class TracekitCallbackHandler(BaseCallbackHandler):
         """Start an LLM span and retain its prompts for token estimation."""
 
         name = (serialized or {}).get("name") or "llm"
-        model = (invocation_params or {}).get("model") or (invocation_params or {}).get("model_name") or (metadata or {}).get("model")
+        model = (((invocation_params or {}).get("model") or (invocation_params or {}).get("model_name")) or (metadata or {}).get("model") or (metadata or {}).get("model_name"))
         attrs = {
             "tags": tags or [],
             "metadata": metadata or {},
@@ -204,7 +204,7 @@ class TracekitCallbackHandler(BaseCallbackHandler):
             return
         text = None
         token_usage: dict[str, int] = {}
-        model = span.attributes.get("model")
+        model = span.attributes.get("model") or (getattr(span, "metadata", None) or {}).get("model")
         try:
             generations = getattr(response, "generations", None) or []
             if generations and generations[0]:

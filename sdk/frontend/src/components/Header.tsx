@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { WiMoonAltWaningCrescent3 } from 'react-icons/wi';
 import type { Theme } from '../hooks/useTheme';
 import { copyToClipboard, obscureToken } from '../utils/auth';
 
@@ -12,8 +13,6 @@ interface HeaderProps {
 }
 
 const TOKEN_KEY = 'tracekit-token-visible';
-const THEME_CLIP_LEFT = 'tracekit-theme-left';
-const THEME_CLIP_RIGHT = 'tracekit-theme-right';
 
 function readFlag(key: string): boolean {
   try {
@@ -60,6 +59,8 @@ export default function Header({
     timerRef.current = window.setTimeout(() => setCopied(false), 1800);
   };
 
+  const isDark = theme === 'dark';
+
   return (
     <header className="app-header">
       <div className="app-header-inner">
@@ -93,30 +94,24 @@ export default function Header({
             type="button"
             className="theme-toggle-button"
             aria-label="Toggle theme"
-            aria-pressed={theme === 'dark'}
-            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}
+            aria-pressed={isDark}
+            title={isDark ? 'Switch to light' : 'Switch to dark'}
+            onClick={() => onThemeChange(isDark ? 'light' : 'dark')}
           >
-            <svg className="theme-toggle-icon theme-toggle-split" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <defs>
-                <clipPath id={THEME_CLIP_LEFT}>
-                  <rect x="0" y="0" width="12" height="24" />
-                </clipPath>
-                <clipPath id={THEME_CLIP_RIGHT}>
-                  <rect x="12" y="0" width="12" height="24" />
-                </clipPath>
-              </defs>
-              <g clipPath={`url(#${THEME_CLIP_LEFT})`}>
-                <circle cx="12" cy="12" r="6.5" fill="currentColor" />
-                <g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                  <path d="M12 2v2.4M12 19.6V22M2 12h2.4M2.9 4.9 4.6 6.6M2.9 19.1 4.6 17.4" />
+            {isDark ? (
+              <svg className="theme-toggle-icon theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="5" fill="currentColor" />
+                <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" />
                 </g>
-              </g>
-              <g clipPath={`url(#${THEME_CLIP_RIGHT})`}>
-                <path d="M18.8 15.8A7.2 7.2 0 0 1 11 5.2a7.2 7.2 0 1 0 7.8 10.6Z" fill="currentColor" />
-              </g>
-              <line x1="12" y1="4" x2="12" y2="20" stroke="var(--surface)" strokeWidth="1.2" />
-            </svg>
+              </svg>
+            ) : (
+              <WiMoonAltWaningCrescent3
+                className="theme-toggle-icon theme-icon-moon"
+                aria-hidden="true"
+                focusable="false"
+              />
+            )}
           </button>
         </div>
       </div>

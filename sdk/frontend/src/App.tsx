@@ -61,6 +61,7 @@ export default function App() {
     () => filtersFromHash(window.location.hash) ?? { ...defaultDashboardFilters },
   );
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const [pageError, setPageError] = useState<string | null>(null);
   const filtersRef = useRef(filters);
   const { theme, setTheme } = useTheme();
 
@@ -70,6 +71,7 @@ export default function App() {
     const onHashChange = () => {
       const nextHash = window.location.hash || '#/';
       setHash(nextHash);
+      setPageError(null);
       const shared = filtersFromHash(nextHash);
       if (shared) setFilters(shared);
       else syncFiltersToHash(filtersRef.current, nextHash);
@@ -88,6 +90,10 @@ export default function App() {
 
   const handleRefresh = useCallback(() => {
     setRefreshSignal((value) => value + 1);
+  }, []);
+
+  const handlePageError = useCallback((message: string | null) => {
+    setPageError(message);
   }, []);
 
   const handleSelectProject = useCallback(
@@ -126,6 +132,7 @@ export default function App() {
       theme={theme}
       onThemeChange={setTheme}
       showRefresh={route.kind !== 'home' && route.kind !== 'docs'}
+      pageError={pageError}
     >
       {route.kind === 'home' ? (
         <Home
@@ -135,9 +142,19 @@ export default function App() {
           onRefresh={handleRefresh}
         />
       ) : route.kind === 'overview' ? (
-        <Overview filters={filters} onFiltersChange={updateFilters} refreshSignal={refreshSignal} />
+        <Overview
+          filters={filters}
+          onFiltersChange={updateFilters}
+          refreshSignal={refreshSignal}
+          onError={handlePageError}
+        />
       ) : route.kind === 'analytics' ? (
-        <Analytics filters={filters} onFiltersChange={updateFilters} refreshSignal={refreshSignal} />
+        <Analytics
+          filters={filters}
+          onFiltersChange={updateFilters}
+          refreshSignal={refreshSignal}
+          onError={handlePageError}
+        />
       ) : route.kind === 'errors' ? (
         <Errors filters={filters} onFiltersChange={updateFilters} refreshSignal={refreshSignal} />
       ) : route.kind === 'projects' ? (

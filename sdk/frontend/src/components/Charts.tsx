@@ -8,6 +8,7 @@ export const CHART_COLORS = {
   secondary: 'var(--chart-secondary)',
   tertiary: 'var(--chart-tertiary)',
   quaternary: 'var(--chart-quaternary)',
+  error: 'var(--chart-error)',
 } as const;
 
 const PALETTE = [
@@ -333,7 +334,15 @@ function ChartFrame({
   const formatLabel = labelFormatter(labels);
   const formatTick = (value: number) =>
     countAxis ? Math.round(value).toLocaleString() : formatValue(value);
-  const colors = series.map((entry, index) => entry.color ?? PALETTE[index % PALETTE.length]);
+  const colors = series.map(
+    (entry, index) =>
+      entry.color
+      ?? (entry.variant === 'error'
+        ? CHART_COLORS.error
+        : entry.variant === 'llm'
+          ? CHART_COLORS.secondary
+          : PALETTE[index % PALETTE.length]),
+  );
   const legend = (
     <ChartLegend items={series.map((entry, index) => ({ label: entry.label, color: colors[index] }))} />
   );

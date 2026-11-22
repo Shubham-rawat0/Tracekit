@@ -15,8 +15,11 @@ def _list(value: Any) -> list[Any]:
 
 def _first(*values: Any) -> Any:
     for value in values:
-        if value is not None:
-            return value
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
     return None
 
 
@@ -39,7 +42,8 @@ def _text(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
-        return value
+        stripped = value.strip()
+        return stripped or None
     return str(value)
 
 
@@ -161,6 +165,43 @@ def _is_llm_span(span: dict[str, Any]) -> bool:
 
 def _metadata(trace: dict[str, Any]) -> dict[str, Any]:
     return _dict(trace.get("metadata"))
+
+
+def has_error_signal(trace: dict[str, Any], spans: Iterable[dict[str, Any]] = ()) -> bool:
+    for container in [trace, *[span for span in spans if isinstance(span, dict)]]:
+        status = str(container.get("status") or "").strip().lower()
+        if status in {"error", "failed", "failure"}:
+            return True
+        for field in ("error", "error_type", "error_message"):
+            if container.get(field) not in (None, "", False):
+                return True
+        attributes = container.get("attributes")
+        if isinstance(attributes, dict):
+            for key in (
+                "error",
+                "error_type",
+                "error_message",
+                "error.type",
+                "error.message",
+                "exception.type",
+                "exception.message",
+            ):
+                if attributes.get(key) not in (None, "", False):
+                    return True
+        events = container.get("events")
+        if not isinstance(events, list):
+            continue
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            if str(event.get("name") or "").strip().lower() == "exception":
+                return True
+            attributes = event.get("attributes")
+            if isinstance(attributes, dict) and any(
+                str(key).startswith("exception.") for key in attributes
+            ):
+                return True
+    return False
 
 
 def _llm_spans(spans: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -371,19 +412,30 @@ def extract_fields(trace: dict[str, Any], spans: list[dict[str, Any]]) -> dict[s
         )
         stacktrace = _text(event_attrs.get("exception.stacktrace"))
 
+    first_meta = _metadata_dict(first_llm)
+    last_meta = _metadata_dict(last_llm)
     model = _text(
         _first(
             trace.get("model_name"),
+            trace.get("model"),
             metadata.get("model"),
             metadata.get("model_name"),
             first_attrs.get("model"),
             last_attrs.get("model"),
-            # Gemini stores model in ls_model_name (LangChain convention)
+            first_meta.get("model"),
+            last_meta.get("model"),
+            first_attrs.get("model_name"),
+            last_attrs.get("model_name"),
+            first_meta.get("model_name"),
+            last_meta.get("model_name"),
             _first(
+                first_attrs.get("ls_model_name"),
+                last_attrs.get("ls_model_name"),
+                first_meta.get("ls_model_name"),
+                last_meta.get("ls_model_name"),
                 first_attrs.get("metadata", {}).get("ls_model_name"),
                 last_attrs.get("metadata", {}).get("ls_model_name"),
             ),
-            # Also check invocation_params.model as fallback
             _first(
                 first_attrs.get("invocation_params", {}).get("model"),
                 last_attrs.get("invocation_params", {}).get("model"),
@@ -451,6 +503,11 @@ def build_context(traces: list[dict[str, Any]], spans_by_trace: dict[str, list[d
     for trace in traces:
         trace_id = _text(trace.get("trace_id"))
         spans = spans_by_trace.get(trace_id or "", [])
+        if (
+            str(trace.get("status") or "").strip().lower() != "error"
+            and has_error_signal(trace, spans)
+        ):
+            trace["status"] = "error"
         fields = extract_fields(trace, spans)
         context.append({"trace": trace, "spans": spans, "fields": fields})
     return context

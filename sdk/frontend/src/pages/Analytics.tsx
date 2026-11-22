@@ -16,6 +16,7 @@ interface AnalyticsProps {
   filters: DashboardFilters;
   onFiltersChange: (patch: Partial<DashboardFilters>) => void;
   refreshSignal: number;
+  onError?: (message: string | null) => void;
 }
 
 function statusTone(status?: string | null): string {
@@ -55,7 +56,7 @@ function CopyId({ value, trace }: { value?: string | null; trace?: boolean }) {
   );
 }
 
-export default function Analytics({ filters, onFiltersChange, refreshSignal }: AnalyticsProps) {
+export default function Analytics({ filters, onFiltersChange, refreshSignal, onError }: AnalyticsProps) {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,16 +65,19 @@ export default function Analytics({ filters, onFiltersChange, refreshSignal }: A
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    onError?.(null);
     try {
       const response = await getAnalytics(toAnalyticsFilters(filters), filters.bucket);
       setData(response);
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load analytics';
       setData(null);
-      setError(err instanceof Error ? err.message : 'Failed to load analytics');
+      setError(message);
+      onError?.(message);
     } finally {
       setLoading(false);
     }
-  }, [filters, filters.bucket]);
+  }, [filters, filters.bucket, onError]);
 
   useEffect(() => {
     void load();

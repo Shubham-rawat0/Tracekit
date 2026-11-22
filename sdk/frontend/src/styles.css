@@ -47,8 +47,8 @@
   --span-other-bar: #6b7a8a;
   --success-text: #14532d;
   --danger-text: #9b1c1c;
-  --theme-sun: #f5a524;
-  --theme-moon: #14532d;
+  --theme-sun: #b45309;
+  --theme-moon: #000000;
   --bg: var(--content-bg);
   --surface: var(--card-bg);
   --surface-hover: #f3f6f2;
@@ -90,7 +90,10 @@
   --chart-secondary: #b45309;
   --chart-tertiary: #5b6b7a;
   --chart-quaternary: #c2701a;
+  --chart-error: #9b1c1c;
   --chart-grid: var(--bar-track);
+  --toggle-bg: #ffffff;
+  --toggle-border: #d9d2c4;
   --sidebar-bg: var(--shell-bg);
   --sidebar-border: transparent;
   --sidebar-active-bg: #f3efe6;
@@ -127,19 +130,22 @@
   --accent-ink: #0d1012;
   --span-internal: #8fa3b3;
   --span-llm: #e0a054;
-  --ok: #71bd88;
+  --ok: #8be0a8;
   --err: #e8756c;
   --warn: #d1a33c;
   --overlay: rgba(0, 0, 0, 0.6);
   --tk-tint: #1c3625;
-  --tk-tint-ink: #c7e6cf;
+  --tk-tint-ink: #8be0a8;
   --tk-error-tint: #3a1d1d;
-  --tk-error-ink: #f0b4b4;
+  --tk-error-ink: #e8756c;
   --chart-primary: #8be0a8;
   --chart-secondary: #f5a524;
   --chart-tertiary: #8fa3b3;
   --chart-quaternary: #e0a054;
+  --chart-error: #e8756c;
   --chart-grid: var(--bar-track);
+  --toggle-bg: #302b24;
+  --toggle-border: #6f6a5f;
   --sidebar-bg: var(--shell-bg);
   --sidebar-border: transparent;
   --sidebar-active-bg: #223a2b;
@@ -178,18 +184,21 @@
     --span-internal: #8fa3b3;
     --span-llm: #e0a054;
     --ok: #8be0a8;
-    --err: #f0b4b4;
+    --err: #e8756c;
     --warn: #f5a524;
     --overlay: rgba(0, 0, 0, 0.6);
     --tk-tint: #1c3625;
     --tk-tint-ink: #c7e6cf;
     --tk-error-tint: #3a1d1d;
-    --tk-error-ink: #f0b4b4;
+    --tk-error-ink: #e8756c;
     --chart-primary: #8be0a8;
     --chart-secondary: #f5a524;
     --chart-tertiary: #8fa3b3;
     --chart-quaternary: #e0a054;
+    --chart-error: #e8756c;
     --chart-grid: var(--bar-track);
+    --toggle-bg: #302b24;
+    --toggle-border: #6f6a5f;
     --sidebar-bg: var(--shell-bg);
     --sidebar-border: transparent;
     --sidebar-active-bg: #223a2b;
@@ -467,15 +476,17 @@ pre,
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--toggle-border);
   border-radius: 50%;
-  background: transparent;
+  background: var(--toggle-bg);
   color: var(--text);
+  box-shadow: 0 1px 3px var(--overlay);
   cursor: pointer;
 }
 
 .theme-toggle-button:hover {
   border-color: var(--accent);
+  background: var(--surface-hover);
 }
 
 .theme-toggle-button:focus-visible {
@@ -484,7 +495,7 @@ pre,
 }
 
 .theme-toggle-icon {
-  position: absolute;
+  display: block;
   width: 20px;
   height: 20px;
   transition: opacity 150ms ease, transform 150ms ease;
@@ -492,71 +503,10 @@ pre,
 
 .theme-icon-moon {
   color: var(--theme-moon);
-  opacity: 1;
-  transform: rotate(0) scale(1);
 }
 
 .theme-icon-sun {
   color: var(--theme-sun);
-  opacity: 0;
-  transform: rotate(-90deg) scale(0.8);
-}
-
-:root[data-theme='dark'] .theme-icon-moon {
-  opacity: 0;
-  transform: rotate(90deg) scale(0.8);
-}
-
-:root[data-theme='dark'] .theme-icon-sun {
-  opacity: 1;
-  transform: rotate(0) scale(1);
-}
-
-.theme-toggle-split {
-  opacity: 0.88;
-}
-
-:root[data-theme='dark'] .theme-toggle-split {
-  opacity: 1;
-  transform: rotate(180deg);
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme]) .theme-toggle-split {
-    opacity: 0.88;
-    transform: rotate(0);
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .theme-toggle-split {
-    opacity: 1;
-    transform: rotate(180deg);
-  }
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme]) .theme-icon-moon {
-    opacity: 1;
-    transform: rotate(0) scale(1);
-  }
-
-  :root:not([data-theme]) .theme-icon-sun {
-    opacity: 0;
-    transform: rotate(-90deg) scale(0.8);
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .theme-icon-moon {
-    opacity: 0;
-    transform: rotate(90deg) scale(0.8);
-  }
-
-  :root:not([data-theme]) .theme-icon-sun {
-    opacity: 1;
-    transform: rotate(0) scale(1);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1372,7 +1322,7 @@ pre,
 }
 
 .chart-bar-error {
-  fill: var(--chart-secondary);
+  fill: var(--chart-error);
 }
 
 .chart-line {

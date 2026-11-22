@@ -7,6 +7,7 @@ interface SidebarProps {
   hash: string;
   dbPath?: string;
   statusOk?: boolean;
+  statusLabel?: string;
   lastRefresh?: number | null;
   collapsed: boolean;
 }
@@ -30,6 +31,7 @@ export default function Sidebar({
   hash,
   dbPath = '',
   statusOk = false,
+  statusLabel,
   lastRefresh = null,
   collapsed,
 }: SidebarProps) {
@@ -70,7 +72,7 @@ export default function Sidebar({
           </div>
         )}
         <div className="sidebar-status mono">
-          {statusOk ? 'ok' : 'offline'}
+          {statusLabel ?? (statusOk ? 'ok' : 'offline')}
           {!collapsed && ` · refreshed ${relativeTime(lastRefresh, now)}`}
         </div>
       </div>

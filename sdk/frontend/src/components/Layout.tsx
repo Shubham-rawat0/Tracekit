@@ -15,6 +15,7 @@ interface LayoutProps {
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
   showRefresh: boolean;
+  pageError?: string | null;
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'tracekit-sidebar-collapsed';
@@ -44,6 +45,7 @@ export default function Layout({
   theme,
   onThemeChange,
   showRefresh,
+  pageError = null,
 }: LayoutProps) {
   const { error: projectsError, refresh: refreshProjects } = useProjects();
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -98,9 +100,11 @@ export default function Layout({
   const healthStatus = health?.status ? String(health.status) : '';
   const dbPath = config?.db_path || '';
   const storageDetail = health?.storage_detail || dbPath;
-  const statusOk = /^(ok|healthy|connected)$/i.test(healthStatus) &&
-    !/unavailable|error|none|missing/i.test(storageDetail);
   const bannerError = statusError ?? projectsError;
+  const statusOk = /^(ok|healthy|connected)$/i.test(healthStatus) &&
+    !/unavailable|error|none|missing/i.test(storageDetail) &&
+    !bannerError &&
+    !pageError;
 
   return (
     <div className="app-shell">
@@ -121,6 +125,7 @@ export default function Layout({
         hash={hash}
         dbPath={dbPath}
         statusOk={statusOk}
+        statusLabel={pageError ? 'error' : undefined}
         lastRefresh={lastRefresh}
         collapsed={sidebarCollapsed}
       />

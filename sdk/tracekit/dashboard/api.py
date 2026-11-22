@@ -28,6 +28,7 @@ from tracekit.dashboard.analytics import (
     build_replay_spec,
     export_row,
     extract_fields,
+    has_error_signal,
     slowest,
     timeseries,
 )
@@ -178,6 +179,11 @@ def _normalize_trace(payload):
         # Presence of trace_id without span_id distinguishes a trace from a span.
         if "trace_id" in payload and "span_id" not in payload:
             _hydrate_trace(payload)
+            if (
+                str(payload.get("status") or "").strip().lower() != "error"
+                and has_error_signal(payload, payload.get("spans") or [])
+            ):
+                payload["status"] = "error"
         if "trace" in payload and isinstance(payload["trace"], dict):
             _normalize_trace(payload["trace"])
         if "spans" in payload and isinstance(payload["spans"], list):
@@ -211,6 +217,28 @@ async def _spans_for_traces(store, traces: list[dict[str, Any]]) -> dict[str, li
         if trace_id:
             result[str(trace_id)] = await store.get_spans_for_trace(str(trace_id))
     return result
+
+
+def _enrich_trace_item(item: dict[str, Any], spans: list[dict[str, Any]]) -> None:
+    if str(item.get("status") or "").strip().lower() != "error" and has_error_signal(item, spans):
+        item["status"] = "error"
+    fields = extract_fields(item, spans)
+    tokens = fields["tokens"]
+    item["span_count"] = len(spans)
+    item["llm_calls"] = fields["llm_count"]
+    item["input_tokens"] = tokens["input_tokens"] if tokens["input_tokens_available"] else None
+    item["output_tokens"] = tokens["output_tokens"] if tokens["output_tokens_available"] else None
+    item["total_tokens"] = tokens["total_tokens"] if tokens["total_tokens_available"] else None
+    if item.get("prompt") is None and fields.get("input") is not None:
+        item["prompt"] = _to_text(fields["input"])
+    if item.get("response") is None and fields.get("output") is not None:
+        item["response"] = _to_text(fields["output"])
+    current_model = item.get("model_name")
+    model_missing = current_model is None or (
+        isinstance(current_model, str) and not current_model.strip()
+    )
+    if model_missing and fields.get("model"):
+        item["model_name"] = str(fields["model"])
 
 
 async def _record_replay(store, body: dict[str, Any]) -> dict[str, Any] | None:
@@ -674,20 +702,7 @@ def make_handler(loop, backend, store, token, static_dir, bind_host):
                     trace_items = [item for item in items if isinstance(item, dict)]
                     spans_by_trace = self._run(_spans_for_traces(self.store, trace_items))
                     for item in trace_items:
-                        spans = spans_by_trace.get(str(item.get("trace_id")), [])
-                        fields = extract_fields(item, spans)
-                        tokens = fields["tokens"]
-                        item["span_count"] = len(spans)
-                        item["llm_calls"] = fields["llm_count"]
-                        item["input_tokens"] = tokens["input_tokens"] if tokens["input_tokens_available"] else None
-                        item["output_tokens"] = tokens["output_tokens"] if tokens["output_tokens_available"] else None
-                        item["total_tokens"] = tokens["total_tokens"] if tokens["total_tokens_available"] else None
-                        if item.get("prompt") is None and fields.get("input") is not None:
-                            item["prompt"] = _to_text(fields["input"])
-                        if item.get("response") is None and fields.get("output") is not None:
-                            item["response"] = _to_text(fields["output"])
-                        if item.get("model_name") is None and fields.get("model") is not None:
-                            item["model_name"] = str(fields["model"])
+                        _enrich_trace_item(item, spans_by_trace.get(str(item.get("trace_id")), []))
                 self._send_json(200, res)
                 return
             if path == "/api/analytics":
@@ -766,6 +781,10 @@ def make_handler(loop, backend, store, token, static_dir, bind_host):
                     self._send_json(404, {"error": "not found"})
                     return
                 _normalize_trace(res)
+                if isinstance(res, dict):
+                    spans_by_trace = self._run(_spans_for_traces(self.store, [res]))
+                    spans = spans_by_trace.get(str(res.get("trace_id")), [])
+                    _enrich_trace_item(res, spans)
                 self._send_json(200, res)
                 return
             if path == "/api/projects":
