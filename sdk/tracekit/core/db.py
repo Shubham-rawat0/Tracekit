@@ -12,6 +12,7 @@ from typing import Any
 
 from tracekit.core.span import normalize_span_type
 from tracekit.core.storage import StorageBackend
+from tracekit.core.trace import warn_on_hierarchy_violations
 
 
 class TraceStore:
@@ -310,6 +311,7 @@ class TraceStore:
         if trace is None:
             return None
         spans = await self.get_spans_for_trace(trace_id)
+        warn_on_hierarchy_violations(spans)
         nodes = []
         by_id: dict[str, dict[str, Any]] = {}
         for s in spans:
@@ -317,12 +319,13 @@ class TraceStore:
             nodes.append(node)
             sid = s.get("span_id")
             if sid:
-                by_id[sid] = node
+                by_id[str(sid)] = node
         roots: list[dict[str, Any]] = []
         for node in nodes:
             pid = node.get("parent_span_id")
-            if pid and pid in by_id:
-                by_id[pid]["children"].append(node)
+            parent_key = str(pid) if pid else ""
+            if parent_key and parent_key in by_id:
+                by_id[parent_key]["children"].append(node)
             else:
                 roots.append(node)
         return {"trace": trace, "spans": spans, "tree": roots}

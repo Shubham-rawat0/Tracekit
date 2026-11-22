@@ -9,7 +9,7 @@ import { useFilterOptions } from '../hooks/useFilterOptions';
 import { toTraceFilters } from '../components/Filters';
 import type { DashboardFilters, Trace, TraceQueryResponse } from '../types';
 import { copyToClipboard } from '../utils/auth';
-import { formatCount, formatDuration, relativeTime, toFiniteNumber } from '../utils/format';
+import { formatAxisTime, formatCount, formatDateTime, formatDuration, relativeTime, toFiniteNumber } from '../utils/format';
 import { learnTokenHistory, resolveTokens } from '../utils/tokenEstimation';
 import { hrefWithFilters } from '../utils/urlFilters';
 
@@ -210,7 +210,7 @@ export default function Home({ filters, onFiltersChange, refreshSignal, onRefres
           </div>
         )}
 
-        {!error && loading && <LoadingRows rows={8} columns={7} label="Loading traces" />}
+        {!error && loading && <LoadingRows rows={8} columns={8} label="Loading traces" />}
 
         {!error && !loading && items.length === 0 && (
           <EmptyState
@@ -229,6 +229,11 @@ export default function Home({ filters, onFiltersChange, refreshSignal, onRefres
                     <th scope="col" aria-sort={sortState('name')}>
                       <button type="button" className="tk-sort-button" onClick={() => toggleSort('name')}>
                         Name{sortIndicator('name')}
+                      </button>
+                    </th>
+                    <th scope="col" aria-sort={sortState('start_time')}>
+                      <button type="button" className="tk-sort-button" onClick={() => toggleSort('start_time')}>
+                        Started{sortIndicator('start_time')}
                       </button>
                     </th>
                     <th scope="col">Model</th>
@@ -256,6 +261,7 @@ export default function Home({ filters, onFiltersChange, refreshSignal, onRefres
                             <a
                               className="tk-trace-link"
                               href={hrefWithFilters(`#/traces/${encodeURIComponent(trace.trace_id)}`, filters)}
+                              title={trace.trace_id}
                             >
                               {trace.trace_id}
                             </a>
@@ -271,6 +277,7 @@ export default function Home({ filters, onFiltersChange, refreshSignal, onRefres
                           </div>
                         </td>
                         <td className="tk-truncate" title={trace.name ?? ''}>{trace.name || '—'}</td>
+                        <td className="tk-mono" title={formatDateTime(trace.start_time)}>{formatAxisTime(trace.start_time)}</td>
                         <td>{modelsText(trace)}</td>
                         <td className="tk-mono"><TokenGroup tokens={tokens} compact /></td>
                         <td className="tk-mono"><CostValue value={cost} estimated={tokens.estimated} /></td>

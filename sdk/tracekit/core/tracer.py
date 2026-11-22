@@ -30,7 +30,7 @@ from tracekit.core.tokens import (
     is_llm_span,
     normalize_provider_usage,
 )
-from tracekit.core.trace import Trace
+from tracekit.core.trace import Trace, warn_on_hierarchy_violations
 
 logger = logging.getLogger(__name__)
 
@@ -426,6 +426,9 @@ class Tracer:
     ) -> Span:
         require_trace = self.require_trace if require_trace is None else require_trace
         trace = trace or get_current_trace()
+        parent = parent or get_current_span()
+        if trace is None and parent is not None:
+            trace = getattr(parent, "_tracekit_trace", None) or self._traces.get(parent.trace_id)
         if trace is None:
             # A remote parent without a local trace creates one that auto-closes with its spans.
             if parent_context is not None:
@@ -448,8 +451,9 @@ class Tracer:
             raise ValueError(
                 "parent_context trace_id does not match the active trace"
             )
+        if parent is not None and parent.trace_id != trace.trace_id:
+            parent = None
         span_type = normalize_span_type(span_type)
-        parent = parent or get_current_span()
         # With no local parent, the remote span becomes this span's parent.
         if parent is None and parent_context is not None:
             parent_span_id = parent_context.span_id
@@ -477,6 +481,7 @@ class Tracer:
             environment=self.environment or trace.environment,
         )
         span.start()
+        setattr(span, "_tracekit_trace", trace)
         if sampled:
             self._spans[span.span_id] = span
         # Span tokens are stored for exact restoration when the span ends.
@@ -735,7 +740,7 @@ class Tracer:
             yield span
             if span.status == "running":
                 self.end_span(span, status="ok")
-        except Exception as e:
+        except BaseException as e:
             # Record the failure before re-raising so callers still see the original exception.
             self.end_span(span, status="error", error=str(e), error_type=type(e).__name__)
             raise
@@ -770,7 +775,7 @@ class Tracer:
             yield span
             if span.status == "running":
                 self.end_span(span, status="ok")
-        except Exception as e:
+        except BaseException as e:
             self.end_span(span, status="error", error=str(e), error_type=type(e).__name__)
             raise
         finally:
@@ -807,7 +812,7 @@ class Tracer:
             yield t
             if t.status == "running":
                 self.end_trace(t, status="ok")
-        except Exception as e:
+        except BaseException as e:
             self.end_trace(t, status="error", error=str(e), error_type=type(e).__name__)
             raise
         finally:
@@ -849,7 +854,7 @@ class Tracer:
             yield t
             if t.status == "running":
                 self.end_trace(t, status="ok")
-        except Exception as e:
+        except BaseException as e:
             self.end_trace(t, status="error", error=str(e), error_type=type(e).__name__)
             raise
         finally:
@@ -975,13 +980,15 @@ class Tracer:
 
         traces_to_flush = [
             tr for tr in self._traces.values()
-            if tr.trace_id not in self._flushed_trace_ids
+            if tr.trace_id not in self._flushed_trace_ids and tr.status != "running"
         ]
         spans_to_flush = [
             sp for sp in self._spans.values()
             if sp.span_id not in self._flushed_span_ids
         ]
         if not traces_to_flush and not spans_to_flush:
+            if self._traces or self._spans:
+                self._ensure_storage()
             return
 
         self._ensure_storage()
@@ -1056,19 +1063,21 @@ class Tracer:
         if trace is None:
             return None
         spans = self.get_spans_for_trace(trace_id)
-        by_id = {s.span_id: s.to_dict() for s in spans}
+        span_dicts = [s.to_dict() for s in spans]
+        warn_on_hierarchy_violations(span_dicts)
+        by_id = {str(s["span_id"]): s for s in span_dicts if s.get("span_id") is not None}
         for s in by_id.values():
             s["children"] = []
         roots: list[dict[str, Any]] = []
         for s in by_id.values():
             parent_id = s.get("parent_span_id")
-            # Spans with a missing parent become roots so partial traces still render.
-            if parent_id and parent_id in by_id:
-                by_id[parent_id]["children"].append(s)
+            parent_key = str(parent_id) if parent_id else ""
+            if parent_key and parent_key in by_id:
+                by_id[parent_key]["children"].append(s)
             else:
                 roots.append(s)
         return {
             "trace": trace.to_dict(),
-            "spans": [s.to_dict() for s in spans],
+            "spans": span_dicts,
             "tree": roots,
         }

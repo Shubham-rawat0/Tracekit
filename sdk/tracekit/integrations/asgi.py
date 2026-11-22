@@ -213,7 +213,7 @@ class ASGITraceMiddleware:
             # End trace on success
             if trace.status == "running":
                 self.tracer.end_trace(trace, status="ok")
-        except Exception as e:
+        except BaseException as e:
             record_exception_on_span(span, e)
             if span.status == "running":
                 span.end(status="error", error=str(e))

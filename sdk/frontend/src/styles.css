@@ -2488,7 +2488,8 @@ pre,
 
 .tk-trace-table {
   width: 100%;
-  font-size: 13px;
+  table-layout: fixed;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -2496,21 +2497,34 @@ pre,
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 10px 16px;
+  padding: 8px;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 650;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-align: left;
+  text-overflow: ellipsis;
   text-transform: uppercase;
 }
 
 .tk-trace-table td {
-  padding: 11px 16px;
+  padding: 8px;
+  overflow: hidden;
   border-top: 1px solid var(--rule);
+  text-overflow: ellipsis;
   vertical-align: middle;
 }
+
+.tk-trace-table th:nth-child(1) { width: 18%; }
+.tk-trace-table th:nth-child(2) { width: 17%; }
+.tk-trace-table th:nth-child(3) { width: 14%; }
+.tk-trace-table th:nth-child(4) { width: 11%; }
+.tk-trace-table th:nth-child(5) { width: 12%; }
+.tk-trace-table th:nth-child(6) { width: 10%; }
+.tk-trace-table th:nth-child(7) { width: 9%; }
+.tk-trace-table th:nth-child(8) { width: 9%; }
 
 .tk-trace-table tbody tr:hover td {
   background: var(--surface-hover);
@@ -2524,14 +2538,20 @@ pre,
 .tk-trace-id-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .tk-trace-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--accent);
-  font-size: 12px;
+  font-size: 11px;
   text-decoration: none;
+  text-overflow: ellipsis;
   text-underline-offset: 3px;
+  white-space: nowrap;
 }
 
 .tk-trace-link:hover {
@@ -2561,6 +2581,29 @@ pre,
   max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tk-trace-table .tk-truncate {
+  max-width: none;
+}
+
+.tk-trace-table .tk-icon-button {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+}
+
+.tk-trace-table .tk-token-group.compact {
+  gap: 4px;
+}
+
+.tk-trace-table .tk-token-unit {
+  display: none;
+}
+
+.tk-trace-table .tk-status {
+  padding: 2px 7px;
+  font-size: 10px;
 }
 
 .tk-sort-button {
@@ -2712,8 +2755,12 @@ pre,
 
   .tk-trace-table th,
   .tk-trace-table td {
-    padding-left: 12px;
-    padding-right: 12px;
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+
+  .tk-trace-table th {
+    font-size: 8px;
   }
 
   .tk-log-header,

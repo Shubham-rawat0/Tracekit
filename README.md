@@ -227,9 +227,9 @@ response = llm.invoke("Hello, Tracekit!", config={"callbacks": [handler]})
 ### Automatic LangChain instrumentation
 
 For zero-change tracing of existing LangChain code, instrument once at startup
-with the top-level API. This patches `BaseLLM`, `BaseChain`, and `BaseTool` so
-new instances automatically receive exactly one `TracekitCallbackHandler`
-without replacing any callbacks you already configured.
+with the top-level API. This patches `BaseLLM`, `BaseChatModel`, `BaseChain`,
+and `BaseTool` so new instances automatically receive exactly one
+`TracekitCallbackHandler` without replacing any callbacks you already configured.
 
 ```python
 import asyncio

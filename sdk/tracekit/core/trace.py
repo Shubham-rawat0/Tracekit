@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -21,6 +22,80 @@ def _utcnow() -> datetime:
 
 def _new_id() -> str:
     return uuid.uuid4().hex
+
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_time(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str) and value.strip():
+        text = value.strip()
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def warn_on_hierarchy_violations(spans: list[dict[str, Any]]) -> None:
+    by_id: dict[str, dict[str, Any]] = {}
+    for span in spans:
+        span_id = span.get("span_id")
+        if span_id is None:
+            continue
+        key = str(span_id)
+        if key in by_id:
+            logger.warning("Duplicate span_id %s in trace %s", key, span.get("trace_id"))
+        by_id[key] = span
+
+    for span in spans:
+        span_id = str(span.get("span_id") or "")
+        parent_id = span.get("parent_span_id")
+        if parent_id is None or parent_id == "":
+            continue
+        parent_key = str(parent_id)
+        parent = by_id.get(parent_key)
+        if parent is None:
+            logger.warning(
+                "Span %s (%s) references missing parent %s in trace %s",
+                span_id,
+                span.get("name"),
+                parent_key,
+                span.get("trace_id"),
+            )
+            continue
+        if str(parent.get("trace_id") or "") != str(span.get("trace_id") or ""):
+            logger.warning(
+                "Span %s (%s) parent %s belongs to a different trace",
+                span_id,
+                span.get("name"),
+                parent_key,
+            )
+        start = _parse_time(span.get("start_time"))
+        end = _parse_time(span.get("end_time"))
+        parent_start = _parse_time(parent.get("start_time"))
+        parent_end = _parse_time(parent.get("end_time"))
+        if (
+            start is not None
+            and end is not None
+            and parent_start is not None
+            and parent_end is not None
+            and (start < parent_start or end > parent_end)
+        ):
+            logger.warning(
+                "Span %s (%s) is not contained within parent %s",
+                span_id,
+                span.get("name"),
+                parent_key,
+            )
 
 
 def _get_trace_context() -> dict[str, Any] | None:

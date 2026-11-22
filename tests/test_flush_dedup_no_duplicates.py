@@ -45,6 +45,19 @@ class TestFlushDeduplication(unittest.IsolatedAsyncioTestCase):
         await tracer.flush()
         self.assertEqual(await self._row_counts(), (1, 1))
 
+    async def test_running_trace_is_flushed_only_after_it_ends(self):
+        tracer = Tracer(storage=self.backend)
+        trace = tracer.start_trace("long-request")
+        span = tracer.start_span("tool-call")
+        tracer.end_span(span)
+
+        await tracer.flush()
+        self.assertEqual(await self._row_counts(), (0, 1))
+
+        tracer.end_trace(trace)
+        await tracer.flush()
+        self.assertEqual(await self._row_counts(), (1, 1))
+
 
 if __name__ == "__main__":
     unittest.main()

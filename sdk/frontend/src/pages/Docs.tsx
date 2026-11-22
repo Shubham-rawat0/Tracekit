@@ -260,25 +260,16 @@ const SECTIONS: DocsSection[] = [
       },
       {
         type: 'paragraph',
-        text: 'For LangChain, install `tracekit[langchain]` and pass `TracekitCallbackHandler` in the call callbacks.',
+        text: 'For LangChain, install `tracekit[langchain]` and enable auto-instrumentation with `trace_langchain()` before you create your tools, models, and chains.',
       },
       {
         type: 'code',
         tabs: [
           {
             label: 'Python',
-            code: 'from langchain_openai import ChatOpenAI\nfrom tracekit import Tracer, TracekitCallbackHandler\n\ntracer = Tracer()\nhandler = TracekitCallbackHandler(tracer)\nllm = ChatOpenAI(model="gpt-4o-mini", callbacks=[handler])\nresponse = llm.invoke("Hello, Tracekit!", config={"callbacks": [handler]})',
+            code: 'from tracekit import Tracer, trace_langchain, untrace_langchain\n\ntracer = Tracer(project_name="my-app")\ntracer = trace_langchain(tracer)\n\nuntrace_langchain()',
           },
         ],
-      },
-      {
-        type: 'paragraph',
-        text: 'The README example imports `langchain_openai`. Install that provider package and set its credentials in your app.',
-      },
-      {
-        type: 'note',
-        todo: true,
-        text: 'TODO: confirm a full provider matrix. The repository verifies LangChain and a generic provider hook for replay. It does not pre-register provider clients.',
       },
     ],
   },

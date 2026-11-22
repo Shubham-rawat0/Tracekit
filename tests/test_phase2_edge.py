@@ -697,5 +697,24 @@ class TestResidualRisks(unittest.TestCase):
         asyncio.run(run_test())
 
 
+class TestCancellationLifecycle(unittest.IsolatedAsyncioTestCase):
+    async def test_async_trace_ends_when_cancelled(self):
+        tracer = Tracer()
+
+        async def run():
+            async with tracer.async_trace("cancelled-request"):
+                await asyncio.sleep(0)
+                raise asyncio.CancelledError()
+
+        with self.assertRaises(asyncio.CancelledError):
+            await run()
+
+        self.assertEqual(len(tracer._traces), 1)
+        trace = next(iter(tracer._traces.values()))
+        self.assertEqual(trace.status, "error")
+        self.assertIsNotNone(trace.end_time)
+        self.assertIsNone(get_current_trace())
+
+
 if __name__ == "__main__":
     unittest.main()

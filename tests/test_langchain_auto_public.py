@@ -1,10 +1,13 @@
 import asyncio
+import json
 import os
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 import tracekit
@@ -55,6 +58,28 @@ def _handlers(instance):
         for callback in instance.callbacks
         if isinstance(callback, TracekitCallbackHandler)
     ]
+
+
+def test_trace_langchain_creates_one_managed_trace_without_explicit_context(tmp_path):
+    tracer = Tracer(storage=None)
+    p1, p2, p3, p4 = _patch_fake_classes()
+    with p1, p2, p3, p4:
+        tracekit.trace_langchain(tracer=tracer)
+        handler = _handlers(FakeBaseLLM())[0]
+    chain_id, llm_id, tool_id = uuid4(), uuid4(), uuid4()
+
+    handler.on_chain_start({"name": "agent"}, {"q": "hi"}, run_id=chain_id)
+    handler.on_llm_start({"name": "model"}, [{"role": "user", "content": "hi"}], run_id=llm_id, parent_run_id=chain_id)
+    handler.on_tool_start({"name": "search"}, "x", run_id=tool_id, parent_run_id=chain_id)
+    handler.on_tool_end("ok", run_id=tool_id, parent_run_id=chain_id)
+    handler.on_llm_end(SimpleNamespace(generations=[], llm_output={}), run_id=llm_id, parent_run_id=chain_id)
+    handler.on_chain_end({"a": "b"}, run_id=chain_id)
+
+    assert len(tracer._traces) == 1
+    trace = next(iter(tracer._traces.values()))
+    assert trace.status == "ok"
+    assert len(tracer._spans) == 3
+    assert all(span.trace_id == trace.trace_id for span in tracer._spans.values())
 
 
 def test_top_level_trace_langchain_flush_alias(tmp_path):
@@ -199,6 +224,38 @@ async def test_langchain_invocation_produces_and_persists_trace(tmp_path):
     assert span_row == ("llm", "proj-public", "test")
 
 
+@pytest.mark.asyncio
+async def test_chat_model_invocation_produces_and_persists_span(tmp_path):
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    db_path = tmp_path / "chat-invocation.db"
+    tracer = tracekit.trace_langchain(db_path=str(db_path))
+    try:
+        chat_model = FakeListChatModel(responses=["hello from tracekit"])
+        assert chat_model.invoke("hello").content == "hello from tracekit"
+
+        await tracer.flush()
+    finally:
+        try:
+            await tracer.close()
+        finally:
+            langchain_auto.untrace_langchain()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        trace_count = conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0]
+        span_row = conn.execute(
+            "SELECT span_type, input FROM spans"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert trace_count == 1
+    assert span_row is not None
+    assert span_row[0] == "llm"
+    assert json.loads(span_row[1])[0][0]["content"] == "hello"
+
+
 def test_existing_callback_manager_is_augmented_once():
     from langchain_core.callbacks import BaseCallbackHandler, CallbackManager
     from langchain_core.language_models.fake import FakeListLLM
@@ -306,3 +363,68 @@ print("ok")
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
+
+
+def test_tool_created_before_trace_langchain_emits_tool_span():
+    from langchain_core.tools import tool
+
+    @tool
+    def echo(value: str) -> str:
+        """Echo the provided value."""
+        return f"echo:{value}"
+
+    assert getattr(echo, "callbacks", None) is None
+    tracer = Tracer(storage=None)
+    tracekit.trace_langchain(tracer=tracer)
+    try:
+        assert echo.run("abc") == "echo:abc"
+    finally:
+        langchain_auto.untrace_langchain()
+
+    tool_spans = [
+        span for span in tracer._spans.values() if span.span_type == "tool"
+    ]
+    assert len(tool_spans) == 1
+    assert tool_spans[0].name == "echo"
+    assert tool_spans[0].input == "abc"
+    assert tool_spans[0].output == "echo:abc"
+
+
+@pytest.mark.asyncio
+async def test_async_tool_created_before_trace_langchain_emits_tool_span():
+    from langchain_core.tools import tool
+
+    @tool
+    async def async_echo(value: str) -> str:
+        """Echo the provided value asynchronously."""
+        return f"async:{value}"
+
+    assert getattr(async_echo, "callbacks", None) is None
+    tracer = Tracer(storage=None)
+    tracekit.trace_langchain(tracer=tracer)
+    try:
+        assert await async_echo.arun("xyz") == "async:xyz"
+    finally:
+        langchain_auto.untrace_langchain()
+
+    tool_spans = [
+        span for span in tracer._spans.values() if span.span_type == "tool"
+    ]
+    assert len(tool_spans) == 1
+    assert tool_spans[0].name == "async_echo"
+    assert tool_spans[0].input == "xyz"
+    assert tool_spans[0].output == "async:xyz"
+
+
+def test_untrace_langchain_restores_tool_run_methods():
+    from langchain_core.tools.base import BaseTool
+
+    original_run = BaseTool.run
+    original_arun = BaseTool.arun
+    tracekit.trace_langchain(tracer=Tracer(storage=None))
+    assert BaseTool.run is not original_run
+    assert BaseTool.arun is not original_arun
+
+    langchain_auto.untrace_langchain()
+    assert BaseTool.run is original_run
+    assert BaseTool.arun is original_arun

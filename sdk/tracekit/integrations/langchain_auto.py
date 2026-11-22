@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 from ..core.tracer import Tracer
@@ -11,10 +12,13 @@ __all__ = ["trace_langchain", "untrace_langchain"]
 
 _PATCHED = False
 _ORIGINAL_INITS: dict[Any, Any] = {}
+_ORIGINAL_METHODS: dict[tuple[Any, str], Any] = {}
 _LANGCHAIN_IMPORT_ERROR: ImportError | None = None
 _TRACER: Tracer | None = None
 _BaseLLM: Any = None
+_BaseChatModel: Any = None
 _BaseChain: Any = None
+_ClassicChain: Any = None
 _BaseTool: Any = None
 
 try:
@@ -30,6 +34,13 @@ else:
         _BaseLLM = None
 
     try:
+        from langchain_core.language_models.chat_models import BaseChatModel
+
+        _BaseChatModel = BaseChatModel
+    except ImportError:
+        _BaseChatModel = None
+
+    try:
         from langchain_core.chains.base import BaseChain
 
         _BaseChain = BaseChain
@@ -37,11 +48,53 @@ else:
         _BaseChain = None
 
     try:
+        from langchain_classic.chains.base import Chain
+
+        _ClassicChain = Chain
+    except ImportError:
+        _ClassicChain = None
+
+    try:
         from langchain_core.tools.base import BaseTool
 
         _BaseTool = BaseTool
     except ImportError:
         _BaseTool = None
+
+
+def _make_patched_tool_method(original: Any, handler: TracekitCallbackHandler) -> Any:
+    if inspect.iscoroutinefunction(original):
+
+        async def patched_async(self: Any, *args: Any, **kwargs: Any) -> Any:
+            self.callbacks = _callbacks_with_handler(
+                getattr(self, "callbacks", None), handler
+            )
+            return await original(self, *args, **kwargs)
+
+        return patched_async
+
+    def patched(self: Any, *args: Any, **kwargs: Any) -> Any:
+        self.callbacks = _callbacks_with_handler(
+            getattr(self, "callbacks", None), handler
+        )
+        return original(self, *args, **kwargs)
+
+    return patched
+
+
+def _instrument_tool_runs(handler: TracekitCallbackHandler) -> None:
+    if _BaseTool is None:
+        return
+    for method_name in ("run", "arun"):
+        original = getattr(_BaseTool, method_name, None)
+        if original is None:
+            continue
+        _ORIGINAL_METHODS[(_BaseTool, method_name)] = original
+        setattr(
+            _BaseTool,
+            method_name,
+            _make_patched_tool_method(original, handler),
+        )
 
 
 def trace_langchain(
@@ -105,7 +158,7 @@ def trace_langchain(
 
     handler = TracekitCallbackHandler(tracer=tracer)
 
-    for cls in (_BaseLLM, _BaseChain, _BaseTool):
+    for cls in (_BaseLLM, _BaseChatModel, _BaseChain, _ClassicChain, _BaseTool):
         if cls is None:
             continue
 
@@ -136,6 +189,8 @@ def trace_langchain(
 
         cls.__init__ = make_patched_init(original_init)
 
+    _instrument_tool_runs(handler)
+
     _TRACER = tracer
     _PATCHED = True
     return tracer
@@ -149,5 +204,10 @@ def untrace_langchain() -> None:
         cls.__init__ = original_init
 
     _ORIGINAL_INITS.clear()
+
+    for (cls, method_name), original in _ORIGINAL_METHODS.items():
+        setattr(cls, method_name, original)
+
+    _ORIGINAL_METHODS.clear()
     _TRACER = None
     _PATCHED = False

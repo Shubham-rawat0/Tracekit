@@ -40,6 +40,7 @@ export interface Trace {
 export interface SpanNode {
   span_id?: string | null;
   trace_id?: string | null;
+  parent_span_id?: string | null;
   name?: string | null;
   span_type?: string | null;
   type?: string | null;
@@ -49,6 +50,8 @@ export interface SpanNode {
   status?: string | null;
   error?: string | null;
   error_type?: string | null;
+  input?: unknown;
+  output?: unknown;
   input_tokens?: number | null;
   output_tokens?: number | null;
   total_tokens?: number | null;
