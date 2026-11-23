@@ -82,8 +82,6 @@ def default_db_path() -> Path:
     return home / "traces.db"
 
 
-_DB_PATH = default_db_path()
-
 # Table and column names are interpolated into SQL (only values are bound), so both need allow-lists.
 ALLOWED_COLLECTIONS = frozenset({"traces", "spans", "projects", "api_keys"})
 
@@ -146,6 +144,8 @@ ALLOWED_FILTER_FIELDS: dict[str, frozenset[str]] = {
             "output_tokens",
             "total_tokens",
             "token_usage_source",
+            "is_final",
+            "handled",
         }
     ),
     "projects": frozenset(
@@ -250,7 +250,9 @@ CREATE TABLE IF NOT EXISTS spans (
     input_tokens INTEGER,
     output_tokens INTEGER,
     total_tokens INTEGER,
-    token_usage_source TEXT
+    token_usage_source TEXT,
+    is_final INTEGER NOT NULL DEFAULT 0,
+    handled INTEGER NOT NULL DEFAULT 0
 )
 """
 
@@ -539,7 +541,7 @@ class SQLiteBackend(TraceStorage):
     def __init__(self, db_path: str | Path | None = None) -> None:
         """Create a SQLite backend for the given database file."""
 
-        self._db_path = Path(db_path).expanduser() if db_path else _DB_PATH
+        self._db_path = Path(db_path).expanduser() if db_path else default_db_path()
         self._conn: aiosqlite.Connection | None = None
         self._connected = False
 

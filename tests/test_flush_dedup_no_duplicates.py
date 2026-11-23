@@ -58,6 +58,30 @@ class TestFlushDeduplication(unittest.IsolatedAsyncioTestCase):
         await tracer.flush()
         self.assertEqual(await self._row_counts(), (1, 1))
 
+    async def test_close_waits_for_scheduled_flush(self):
+        import sqlite3
+
+        db_path = Path(self._temp_dir.name) / "close.db"
+        backend = SQLiteBackend(db_path)
+        await backend.initialize()
+        tracer = Tracer(storage=backend, auto_flush=True)
+        trace = tracer.start_trace("closing-request")
+        span = tracer.start_span("tool-call")
+        tracer.end_span(span)
+        tracer.end_trace(trace)
+
+        await tracer.close()
+
+        conn = sqlite3.connect(db_path)
+        try:
+            counts = tuple(
+                conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for table in ("traces", "spans")
+            )
+        finally:
+            conn.close()
+        self.assertEqual(counts, (1, 1))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -55,3 +55,12 @@ def test_sqlite_backend_expands_user_in_explicit_db_path(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     backend = SQLiteBackend(db_path="~/.tracellm/custom.db")
     assert backend._db_path == tmp_path / ".tracellm" / "custom.db"
+
+
+def test_default_sqlite_backend_resolves_environment_when_created(monkeypatch, tmp_path):
+    db_path = tmp_path / "late-env.db"
+    monkeypatch.setenv("TRACEKIT_DB_PATH", str(db_path))
+
+    backend = SQLiteBackend()
+
+    assert backend._db_path == db_path

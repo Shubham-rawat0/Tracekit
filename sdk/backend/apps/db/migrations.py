@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import aiosqlite
 
 # Bump only alongside a new numbered entry in _MIGRATIONS.
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 CREATE_SCHEMA_VERSION_TABLE = """
 CREATE TABLE IF NOT EXISTS SCHEMA_VERSION (
@@ -74,6 +74,8 @@ _CANONICAL_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("output_tokens", "INTEGER"),
         ("total_tokens", "INTEGER"),
         ("token_usage_source", "TEXT"),
+        ("is_final", "INTEGER NOT NULL DEFAULT 0"),
+        ("handled", "INTEGER NOT NULL DEFAULT 0"),
     ),
     "projects": (
         ("project_id", "TEXT"),
@@ -218,6 +220,16 @@ async def _migration_5(conn: aiosqlite.Connection) -> None:
                 await _add_column_if_missing(conn, table, column, definition)
 
 
+async def _migration_6(conn: aiosqlite.Connection) -> None:
+    """Add final/handled markers to the span table."""
+
+    if not await _table_exists(conn, "spans"):
+        return
+    for column, definition in _CANONICAL_COLUMNS["spans"]:
+        if column in ("is_final", "handled"):
+            await _add_column_if_missing(conn, "spans", column, definition)
+
+
 # Versions must be contiguous; ensure_schema refuses to skip a missing step.
 _MIGRATIONS = {
     1: _migration_1,
@@ -225,6 +237,7 @@ _MIGRATIONS = {
     3: _migration_3,
     4: _migration_4,
     5: _migration_5,
+    6: _migration_6,
 }
 
 

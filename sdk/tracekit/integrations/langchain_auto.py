@@ -6,7 +6,12 @@ import inspect
 from typing import Any
 
 from ..core.tracer import Tracer
-from .langchain import TracekitCallbackHandler, _callbacks_with_handler
+from .langchain import (
+    TracekitCallbackHandler,
+    _callbacks_with_handler,
+    _reset_run_options,
+    _set_run_options,
+)
 
 __all__ = ["trace_langchain", "untrace_langchain"]
 
@@ -15,6 +20,7 @@ _ORIGINAL_INITS: dict[Any, Any] = {}
 _ORIGINAL_METHODS: dict[tuple[Any, str], Any] = {}
 _LANGCHAIN_IMPORT_ERROR: ImportError | None = None
 _TRACER: Tracer | None = None
+_HANDLER: TracekitCallbackHandler | None = None
 _BaseLLM: Any = None
 _BaseChatModel: Any = None
 _BaseChain: Any = None
@@ -62,6 +68,15 @@ else:
         _BaseTool = None
 
 
+_RUN_OPTION_KEYS = ("allow_failure", "mark_final")
+
+
+def _pop_run_options(kwargs: dict[str, Any]) -> dict[str, bool]:
+    """Extract TraceKit run flags so LangChain never sees them."""
+
+    return {key: bool(kwargs.pop(key)) for key in _RUN_OPTION_KEYS if key in kwargs}
+
+
 def _make_patched_tool_method(original: Any, handler: TracekitCallbackHandler) -> Any:
     if inspect.iscoroutinefunction(original):
 
@@ -69,7 +84,13 @@ def _make_patched_tool_method(original: Any, handler: TracekitCallbackHandler) -
             self.callbacks = _callbacks_with_handler(
                 getattr(self, "callbacks", None), handler
             )
-            return await original(self, *args, **kwargs)
+            options = _pop_run_options(kwargs)
+            token = _set_run_options(options) if options else None
+            try:
+                return await original(self, *args, **kwargs)
+            finally:
+                if token is not None:
+                    _reset_run_options(token)
 
         return patched_async
 
@@ -77,7 +98,13 @@ def _make_patched_tool_method(original: Any, handler: TracekitCallbackHandler) -
         self.callbacks = _callbacks_with_handler(
             getattr(self, "callbacks", None), handler
         )
-        return original(self, *args, **kwargs)
+        options = _pop_run_options(kwargs)
+        token = _set_run_options(options) if options else None
+        try:
+            return original(self, *args, **kwargs)
+        finally:
+            if token is not None:
+                _reset_run_options(token)
 
     return patched
 
@@ -101,6 +128,8 @@ def trace_langchain(
     tracer: Tracer | None = None,
     flush: bool | None = None,
     auto_flush: bool | None = None,
+    allow_failure: bool = True,
+    mark_final: bool = False,
     **tracer_kwargs: Any,
 ) -> Tracer:
     """Instrument LangChain constructors so new instances are traced automatically.
@@ -110,7 +139,7 @@ def trace_langchain(
     options, so ``flush``, ``auto_flush``, and other ``Tracer`` keyword
     arguments are rejected.
     """
-    global _PATCHED, _TRACER
+    global _PATCHED, _TRACER, _HANDLER
 
     if (
         flush is not None
@@ -156,7 +185,11 @@ def trace_langchain(
             resolved_auto_flush = False
         tracer = Tracer(auto_flush=resolved_auto_flush, **tracer_kwargs)
 
-    handler = TracekitCallbackHandler(tracer=tracer)
+    handler = TracekitCallbackHandler(
+        tracer=tracer,
+        allow_failure=allow_failure,
+        mark_final=mark_final,
+    )
 
     for cls in (_BaseLLM, _BaseChatModel, _BaseChain, _ClassicChain, _BaseTool):
         if cls is None:
@@ -192,13 +225,17 @@ def trace_langchain(
     _instrument_tool_runs(handler)
 
     _TRACER = tracer
+    _HANDLER = handler
     _PATCHED = True
     return tracer
 
 
 def untrace_langchain() -> None:
     """Restore original LangChain constructors and reset instrumentation."""
-    global _PATCHED, _TRACER
+    global _PATCHED, _TRACER, _HANDLER
+
+    if _HANDLER is not None:
+        _HANDLER.close()
 
     for cls, original_init in _ORIGINAL_INITS.items():
         cls.__init__ = original_init
@@ -210,4 +247,5 @@ def untrace_langchain() -> None:
 
     _ORIGINAL_METHODS.clear()
     _TRACER = None
+    _HANDLER = None
     _PATCHED = False

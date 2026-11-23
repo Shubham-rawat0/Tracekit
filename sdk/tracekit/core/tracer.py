@@ -316,6 +316,28 @@ class Tracer:
                 return finalize_provider_usage(normalized)
         return None
 
+    def _derive_trace_status(self, trace: Trace) -> str:
+        """Resolve a trace status from its final span, or the last finished span."""
+
+        candidates = [
+            span for span in self.get_spans_for_trace(trace.trace_id)
+            if not span.handled and span.status != "running"
+        ]
+        if not candidates:
+            return trace.status if trace.status != "running" else "ok"
+        final_spans = [span for span in candidates if span.is_final]
+
+        def ended_at(span: Span) -> datetime:
+            return span.end_time or span.start_time or datetime.min.replace(tzinfo=timezone.utc)
+
+        decisive = max(final_spans or candidates, key=ended_at)
+        status = str(decisive.status or "ok").lower()
+        if status in {"running", "failed", "failure"}:
+            status = "error" if status != "running" else "ok"
+        if decisive.error and status == "ok":
+            status = "error"
+        return status if status in {"ok", "warning", "error"} else "ok"
+
     def end_trace(
         self,
         trace: Trace | None = None,
@@ -328,7 +350,13 @@ class Tracer:
         trace = trace or get_current_trace()
         if trace is None:
             return None
-        trace.end(status="error" if error else status, error=error)
+        if error:
+            resolved_status = "error"
+        elif status != "ok":
+            resolved_status = status
+        else:
+            resolved_status = self._derive_trace_status(trace)
+        trace.end(status=resolved_status, error=error)
         spans = self.get_spans_for_trace(trace.trace_id)
         usage_by_span = dict(self._trace_token_usage.get(trace.trace_id, {}))
         prompt = None
@@ -422,6 +450,8 @@ class Tracer:
         require_trace: bool | None = None,
         parent_context: SpanContext | None = None,
         sampled: bool | None = None,
+        allow_failure: bool = False,
+        mark_final: bool = False,
         **extra: Any,
     ) -> Span:
         require_trace = self.require_trace if require_trace is None else require_trace
@@ -481,7 +511,9 @@ class Tracer:
             environment=self.environment or trace.environment,
         )
         span.start()
+        span.is_final = mark_final
         setattr(span, "_tracekit_trace", trace)
+        setattr(span, "_tracekit_allow_failure", allow_failure)
         if sampled:
             self._spans[span.span_id] = span
         # Span tokens are stored for exact restoration when the span ends.
@@ -502,6 +534,8 @@ class Tracer:
         require_trace: bool | None = None,
         parent_context: SpanContext | None = None,
         sampled: bool | None = None,
+        allow_failure: bool = False,
+        mark_final: bool = False,
         **extra: Any,
     ) -> Span:
         attrs = dict(attributes or {})
@@ -517,6 +551,8 @@ class Tracer:
             require_trace=require_trace,
             parent_context=parent_context,
             sampled=sampled,
+            allow_failure=allow_failure,
+            mark_final=mark_final,
             **extra,
         )
 
@@ -529,6 +565,8 @@ class Tracer:
         require_trace: bool | None = None,
         parent_context: SpanContext | None = None,
         sampled: bool | None = None,
+        allow_failure: bool = False,
+        mark_final: bool = False,
         **extra: Any,
     ) -> Span:
         attrs = dict(attributes or {})
@@ -541,6 +579,8 @@ class Tracer:
             require_trace=require_trace,
             parent_context=parent_context,
             sampled=sampled,
+            allow_failure=allow_failure,
+            mark_final=mark_final,
             **extra,
         )
 
@@ -712,6 +752,67 @@ class Tracer:
         return span
 
     @contextmanager
+    def _run_span(
+        self,
+        name: str,
+        span_type: SpanType | str = SpanType.INTERNAL,
+        *,
+        trace: Trace | None = None,
+        parent: Span | None = None,
+        attributes: dict[str, Any] | None = None,
+        input: Any = None,
+        allow_failure: bool = False,
+        mark_final: bool = False,
+        require_trace: bool | None = None,
+        parent_context: SpanContext | None = None,
+        sampled: bool | None = None,
+    ) -> Iterator[Span]:
+        """Own a span's lifetime, recording and optionally handling failures."""
+
+        span = self.start_span(
+            name=name,
+            span_type=span_type,
+            trace=trace,
+            parent=parent,
+            attributes=attributes,
+            input=input,
+            set_current=False,
+            require_trace=require_trace,
+            parent_context=parent_context,
+            sampled=sampled,
+            allow_failure=allow_failure,
+            mark_final=mark_final,
+        )
+        token = set_current_span(span)
+        try:
+            yield span
+        except BaseException as exc:
+            self.end_span(span, status="error", error=str(exc), error_type=type(exc).__name__)
+            span.handled = allow_failure
+            if not allow_failure:
+                raise
+        else:
+            if span.status == "running":
+                self.end_span(span, status="ok")
+        finally:
+            reset_current_span(token)
+
+    def run_span(
+        self,
+        name: str,
+        func: Any,
+        /,
+        **kwargs: Any,
+    ) -> Any:
+        """Run a callable in a span; handled failures return None instead of raising."""
+
+        result: Any = None
+        with self._run_span(name, **kwargs) as span:
+            result = func()
+        span.output = result
+        return result
+
+    @contextmanager
     def span(
         self,
         name: str,
@@ -721,31 +822,22 @@ class Tracer:
         require_trace: bool | None = None,
         parent_context: SpanContext | None = None,
         sampled: bool | None = None,
+        allow_failure: bool = False,
+        mark_final: bool = False,
     ) -> Iterator[Span]:
-        parent = get_current_span()
-        span = self.start_span(
-            name=name,
+        with self._run_span(
+            name,
             span_type=span_type,
-            parent=parent,
+            parent=get_current_span(),
             attributes=attributes,
             input=input,
-            set_current=False,
             require_trace=require_trace,
             parent_context=parent_context,
             sampled=sampled,
-        )
-        # start_span skipped context setup so this manager owns the context lifetime.
-        token = set_current_span(span)
-        try:
+            allow_failure=allow_failure,
+            mark_final=mark_final,
+        ) as span:
             yield span
-            if span.status == "running":
-                self.end_span(span, status="ok")
-        except BaseException as e:
-            # Record the failure before re-raising so callers still see the original exception.
-            self.end_span(span, status="error", error=str(e), error_type=type(e).__name__)
-            raise
-        finally:
-            reset_current_span(token)
 
     @asynccontextmanager
     async def async_span(
@@ -757,6 +849,8 @@ class Tracer:
         require_trace: bool | None = None,
         parent_context: SpanContext | None = None,
         sampled: bool | None = None,
+        allow_failure: bool = False,
+        mark_final: bool = False,
     ) -> AsyncIterator[Span]:
         parent = get_current_span()
         span = self.start_span(
@@ -769,6 +863,8 @@ class Tracer:
             require_trace=require_trace,
             parent_context=parent_context,
             sampled=sampled,
+            allow_failure=allow_failure,
+            mark_final=mark_final,
         )
         token = set_current_span(span)
         try:
@@ -777,7 +873,9 @@ class Tracer:
                 self.end_span(span, status="ok")
         except BaseException as e:
             self.end_span(span, status="error", error=str(e), error_type=type(e).__name__)
-            raise
+            span.handled = allow_failure
+            if not allow_failure:
+                raise
         finally:
             reset_current_span(token)
 
@@ -962,6 +1060,15 @@ class Tracer:
         """Stop background tasks, flush pending data, and close storage."""
         # Stop scheduled producers first so no new work is queued after the final flush.
         await self.stop_flush_loop()
+        task = self._flush_task
+        self._flush_task = None
+        if task is not None and not task.done():
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
         await self.stop_stream_server()
         await self.flush()
         if self.storage is not None:
@@ -1001,7 +1108,10 @@ class Tracer:
             if not self.storage.is_connected:
                 await self.storage.initialize()
 
-            trace_dicts = [tr.to_dict() for tr in traces_to_flush]
+            trace_dicts = []
+            for tr in traces_to_flush:
+                tr.status = self._derive_trace_status(tr)
+                trace_dicts.append(tr.to_dict())
             span_dicts = [sp.to_dict() for sp in spans_to_flush]
 
             if trace_dicts:
@@ -1046,7 +1156,10 @@ class Tracer:
             self._stream_server = None
 
     def get_trace(self, trace_id: str) -> Trace | None:
-        return self._traces.get(trace_id)
+        trace = self._traces.get(trace_id)
+        if trace is not None and trace.status != "running":
+            trace.status = self._derive_trace_status(trace)
+        return trace
 
     def get_spans_for_trace(self, trace_id: str) -> list[Span]:
         spans = [s for s in self._spans.values() if s.trace_id == trace_id]

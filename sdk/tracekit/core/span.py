@@ -73,6 +73,8 @@ class Span:
     output_tokens: int | None = None
     total_tokens: int | None = None
     token_usage_source: str | None = None
+    is_final: bool = False
+    handled: bool = False
 
     def __post_init__(self) -> None:
         self.span_type = normalize_span_type(self.span_type)

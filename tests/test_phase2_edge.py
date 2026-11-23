@@ -478,7 +478,7 @@ class TestRequireTrace(unittest.TestCase):
         self.assertEqual(len(tracer._traces), initial_trace_count, "No auto-trace should be created when require_trace=True raises")
 
     def test_span_context_manager_exception_clears_context(self):
-        """Exception in span() with require_trace=False: context cleared, auto-trace ended with status ok."""
+        """Exception in span() with require_trace=False: context cleared, auto-trace mirrors the failed span."""
         tracer = Tracer(require_trace=True)
         try:
             with tracer.span("test", require_trace=False) as span:
@@ -486,11 +486,11 @@ class TestRequireTrace(unittest.TestCase):
         except ValueError:
             pass
 
-        # After exception: context cleared, auto-trace ended (status ok), remains in _traces for replay
+        # After exception: context cleared, auto-trace ends with the last span's status
         self.assertIsNone(get_current_trace())
         auto_trace = tracer._traces.get(span.trace_id)
         self.assertIsNotNone(auto_trace, "Auto-trace should remain in _traces for replay/flush")
-        self.assertEqual(auto_trace.status, "ok", "Auto-trace should be ended with status ok")
+        self.assertEqual(auto_trace.status, "error", "Auto-trace should reflect the failed span")
 
 
 class TestBaggage(unittest.TestCase):

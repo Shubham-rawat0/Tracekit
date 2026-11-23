@@ -275,6 +275,39 @@ handler = TracekitCallbackHandler()
 llm = handler.wrap(existing_llm)  # injects handler into callbacks
 ```
 
+### Decisive spans and handled failures
+
+A trace's final status follows one decisive span instead of every intermediate
+error. Spans carry `is_final` and `handled` flags; both are persisted in SQLite
+(migration 6, `is_final INTEGER NOT NULL DEFAULT 0` and
+`handled INTEGER NOT NULL DEFAULT 0`).
+
+`Tracer.run_span()` (and the `tracer.span(...)` context manager) accept:
+
+- `allow_failure=True` — record the error on the span, set `handled=True`, and
+  return `None` instead of re-raising. Handled spans are ignored when the trace
+  status is computed, so a recovered tool outage does not fail the workflow.
+- `mark_final=True` — set `is_final=True` on the span. If any span is final, its
+  status decides the trace status (the last final span wins). Without a final
+  span, the last finished, unhandled span decides it.
+
+```python
+tracer.run_span("inventory-service", call_inventory, allow_failure=True)
+tracer.run_span("final-summary", summarize, mark_final=True)
+```
+
+For auto-instrumented LangChain, `trace_langchain()` enables
+`allow_failure=True` for tool runs by default and accepts `mark_final=True` to
+mark LLM spans as decisive. Per-invocation overrides can be passed to a tool's
+`run()`/`invoke()` wrapper as `allow_failure=` or `mark_final=`; they are
+forwarded to the underlying span runner and never reach LangChain.
+
+```python
+tracer = tracekit.trace_langchain(db_path="./traces.db", mark_final=True)
+# Tool failures keep their error details but do not fail the trace;
+# the last LLM span decides the overall status.
+```
+
 ## Token accounting
 
 LLM spans record `input_tokens`, `output_tokens`, `total_tokens`, and

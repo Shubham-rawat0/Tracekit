@@ -225,6 +225,34 @@ async def test_langchain_invocation_produces_and_persists_trace(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_untrace_closes_completed_top_level_tool_trace_before_shutdown(tmp_path):
+    from langchain_core.tools import tool
+
+    db_path = tmp_path / "tool-trace.db"
+    tracer = tracekit.trace_langchain(db_path=str(db_path))
+
+    @tool
+    def root_tool(value: str) -> str:
+        """Return the input value."""
+        return value
+
+    try:
+        assert root_tool.invoke("persist me") == "persist me"
+        assert any(trace.status == "running" for trace in tracer._traces.values())
+        langchain_auto.untrace_langchain()
+        await tracer.close()
+    finally:
+        langchain_auto.untrace_langchain()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM spans").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
 async def test_chat_model_invocation_produces_and_persists_span(tmp_path):
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
 

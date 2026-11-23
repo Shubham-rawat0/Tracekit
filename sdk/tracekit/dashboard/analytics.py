@@ -168,7 +168,18 @@ def _metadata(trace: dict[str, Any]) -> dict[str, Any]:
 
 
 def has_error_signal(trace: dict[str, Any], spans: Iterable[dict[str, Any]] = ()) -> bool:
-    for container in [trace, *[span for span in spans if isinstance(span, dict)]]:
+    span_dicts = [span for span in spans if isinstance(span, dict)]
+    effective = [span for span in span_dicts if not span.get("handled")]
+    final_spans = [span for span in effective if span.get("is_final")]
+    if final_spans:
+        decisive = max(
+            final_spans,
+            key=lambda span: str(span.get("end_time") or span.get("start_time") or ""),
+        )
+        containers = [trace, decisive]
+    else:
+        containers = [trace, *effective]
+    for container in containers:
         status = str(container.get("status") or "").strip().lower()
         if status in {"error", "failed", "failure"}:
             return True

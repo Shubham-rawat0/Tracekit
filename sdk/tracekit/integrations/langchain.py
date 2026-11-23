@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from contextvars import ContextVar
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
@@ -28,6 +29,22 @@ except Exception:  # pragma: no cover - fallback for environments without langch
 _MISSING = object()
 
 _SESSION_IDLE_SECONDS = 10.0
+
+# Per-invocation overrides set by auto-instrumentation before delegating to LangChain.
+_RUN_OPTIONS: ContextVar[dict[str, bool]] = ContextVar("tracekit_langchain_run_options", default={})
+
+
+def _set_run_options(options: dict[str, bool]) -> Any:
+    """Merge run-scoped flags over the ambient options and return a reset token."""
+
+    return _RUN_OPTIONS.set({**_RUN_OPTIONS.get(), **options})
+
+
+def _reset_run_options(token: Any) -> None:
+    """Restore the options that were active before a run."""
+
+    _RUN_OPTIONS.reset(token)
+
 
 _extract_token_usage = extract_token_usage
 
@@ -116,10 +133,17 @@ class TracekitCallbackHandler(BaseCallbackHandler):
 
     run_inline = True
 
-    def __init__(self, tracer: Optional[Tracer] = None) -> None:
+    def __init__(
+        self,
+        tracer: Optional[Tracer] = None,
+        allow_failure: bool = False,
+        mark_final: bool = False,
+    ) -> None:
         """Create a callback handler that writes spans through the given tracer."""
 
         self.tracer = tracer or Tracer()
+        self.allow_failure = allow_failure
+        self.mark_final = mark_final
         # Maps LangChain run ids to active spans so end/error callbacks can close the right one.
         self._runs: Dict[str, Any] = {}
         self._run_traces: Dict[str, Any] = {}
@@ -137,6 +161,16 @@ class TracekitCallbackHandler(BaseCallbackHandler):
         """Normalize a LangChain run id for the active-run map."""
 
         return str(run_id)
+
+    def _allow_failure(self) -> bool:
+        """Whether tool failures should be recorded but not fail the session."""
+
+        return bool(_RUN_OPTIONS.get().get("allow_failure", self.allow_failure))
+
+    def _mark_final(self) -> bool:
+        """Whether created LLM spans are decisive for the trace status."""
+
+        return bool(_RUN_OPTIONS.get().get("mark_final", self.mark_final))
 
     def _parent_span(self, parent_run_id: UUID | str | None) -> Any | None:
         """Resolve a LangChain parent run id to its TraceKit span."""
@@ -175,6 +209,11 @@ class TracekitCallbackHandler(BaseCallbackHandler):
             self._session_timer = None
         if trace is not None and trace.status == "running":
             self.tracer.end_trace(trace, status=status, error=error)
+
+    def close(self) -> None:
+        """Close a completed managed session before its tracer is shut down."""
+
+        self._close_idle_session()
 
     def _touch_session(
         self,
@@ -285,6 +324,7 @@ class TracekitCallbackHandler(BaseCallbackHandler):
         run_id: UUID | str,
         status: str = "ok",
         error: str | None = None,
+        handled: bool = False,
     ) -> Any | None:
         """Pop a completed run's span and trace bookkeeping."""
 
@@ -295,7 +335,10 @@ class TracekitCallbackHandler(BaseCallbackHandler):
             with self._session_lock:
                 self._session_roots.discard(root_id)
                 kind = self._session_root_kinds.pop(root_id, None)
-            self._touch_session(status, error)
+            if handled:
+                self._touch_session()
+            else:
+                self._touch_session(status, error)
             if kind in ("chain", "llm"):
                 self._close_idle_session()
         return self._runs.pop(key, None)
@@ -395,6 +438,7 @@ class TracekitCallbackHandler(BaseCallbackHandler):
             attributes=attrs,
             trace=trace,
             parent=parent,
+            mark_final=self._mark_final(),
         )
         self._record_run(run_id, span, trace)
 
@@ -439,6 +483,7 @@ class TracekitCallbackHandler(BaseCallbackHandler):
             attributes=attrs,
             trace=trace,
             parent=parent,
+            mark_final=self._mark_final(),
         )
         self._record_run(run_id, span, trace)
 
@@ -526,6 +571,7 @@ class TracekitCallbackHandler(BaseCallbackHandler):
             attributes=attrs,
             trace=trace,
             parent=parent,
+            allow_failure=self._allow_failure(),
         )
         self._record_run(run_id, span, trace)
 
@@ -554,8 +600,10 @@ class TracekitCallbackHandler(BaseCallbackHandler):
     ) -> Any:
         """Record a tool failure and close the tool span."""
 
-        span = self._finish_run(run_id, status="error", error=str(error))
+        handled = self._allow_failure()
+        span = self._finish_run(run_id, status="error", error=str(error), handled=handled)
         if span:
+            span.handled = handled
             self.tracer.record_tool_result(span, error=str(error))
             self.tracer.end_span(span, status="error", error=str(error), error_type=type(error).__name__)
 

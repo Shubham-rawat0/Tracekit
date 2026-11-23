@@ -363,6 +363,8 @@ async def _record_replay(store, body: dict[str, Any]) -> dict[str, Any] | None:
             "replay_parameters": parameters,
         },
         "events": [],
+        "is_final": True,
+        "handled": False,
     }
     for key, value in result.metadata.items():
         new_trace["metadata"][f"replay_result_{key}"] = value
